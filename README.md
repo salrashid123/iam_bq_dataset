@@ -102,15 +102,17 @@ Here are some basic queries you can run
 #### List all Partitions
 
 ```sql
+bq query --nouse_legacy_sql  '
 SELECT
   _PARTITIONTIME AS pt,
   FORMAT_TIMESTAMP("%Y%m%d", _PARTITIONTIME) AS partition_id
 FROM
-  `iam-log.iam.permissions`
+  iam-log.iam.permissions
 GROUP BY
   _PARTITIONTIME
 ORDER BY
   _PARTITIONTIME
+'
 ```
 
 #### Get Roles that include a Permission
@@ -118,14 +120,16 @@ ORDER BY
 Get all Roles which includes `storage.objects.get` permission on a given partition
 
 ```sql
+bq query --nouse_legacy_sql  '
 SELECT
   d1.name,
   d1.roles
 FROM
-  `iam-log.iam.permissions` AS d1
+  iam-log.iam.permissions AS d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP('2021-09-14')
-  AND d1.name = 'storage.objects.get'
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-14")
+  AND d1.name = "storage.objects.get"
+'
 ```
 
 #### Get Permissions included in a Role
@@ -133,14 +137,16 @@ WHERE
 Get all Permissions included in `roles/serverless.serviceAgent` permission on a given partition
 
 ```sql
+bq query --nouse_legacy_sql  '
 SELECT
   d1.name,
   d1.included_permissions
 FROM
-  `iam-log.iam.roles` as d1
+  iam-log.iam.roles as d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP('2021-09-14')
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-14")
   AND d1.name = "roles/serverless.serviceAgent"
+'
 ```
 
 #### Get Permissions differences between two days
