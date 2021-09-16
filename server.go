@@ -39,7 +39,7 @@ type Permission struct {
 }
 
 const (
-	maxRequestsPerSecond float64 = 4 // "golang.org/x/time/rate" limiter to throttle operations
+	maxRequestsPerSecond float64 = 15 // "golang.org/x/time/rate" limiter to throttle operations
 	burst                int     = 4
 	roleTableName                = "roles"
 	permissionsTableName         = "permissions"
@@ -105,11 +105,13 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Getting Organization Roles/Permissions\n")
 
 		if *organization == "" {
+			fmt.Printf("Error organizationID cannot be null")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		oreq, err := crmService.Organizations.Get(fmt.Sprintf("organizations/%s", *organization)).Do()
 		if err != nil {
+			fmt.Printf("Error getting crmService  %v\n", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -121,6 +123,7 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 		// A) for Organization Roles
 		err = generateMap(ctx, parent)
 		if err != nil {
+			fmt.Printf("Error generatingMap for Organizations  %v\n", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -171,8 +174,6 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 		permissions.Permissions = []Permission{}
 	}
 
-	fmt.Printf("%v\n", roles.Roles)
-	fmt.Printf("%v\n", permissions.Permissions)
 	fmt.Printf("Generating BigQuery output\n")
 
 	// tokenSourceWithScopes, err := google.DefaultTokenSource(ctx, "https://www.googleapis.com/auth/bigquery", "https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/devstorage.read_only")
@@ -212,6 +213,7 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 	for _, v := range roles.Roles {
 		json, err := json.Marshal(v)
 		if err != nil {
+			fmt.Printf("Error marshalling Roles  %v\n", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -268,6 +270,7 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 	for _, v := range permissions.Permissions {
 		json, err := json.Marshal(v)
 		if err != nil {
+			fmt.Printf("Error marshalling Permissions  %v\n", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -365,25 +368,23 @@ func generateMap(ctx context.Context, parent string) error {
 				for _, perm := range rc.IncludedPermissions {
 					//fmt.Printf("     Appending Permission %s to Role %s", perm, sa.Name)
 					i, ok := find(permissions.Permissions, perm)
-
+					pmutex.Lock()
 					if !ok {
-						pmutex.Lock()
 						permissions.Permissions = append(permissions.Permissions, Permission{
 							Name:  perm,
 							Roles: []string{sa.Name},
 						})
-						pmutex.Unlock()
 					} else {
-						pmutex.Lock()
 						p := permissions.Permissions[i]
+						cmutex.Lock()
 						_, ok := find(p.Roles, sa.Name)
 						if !ok {
 							p.Roles = append(p.Roles, sa.Name)
 							permissions.Permissions[i] = p
 						}
-						pmutex.Unlock()
+						cmutex.Unlock()
 					}
-
+					pmutex.Unlock()
 				}
 			}(ctx, &wg, sa)
 

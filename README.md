@@ -149,21 +149,21 @@ WHERE
 '
 ```
 
-#### Get Permissions differences between two days
+#### Get Permissions differences between two days for a given Role
 
 (i don't know enough sql to do this)
 
 ```sql
 ```
 
-#### Find which roles added/removed permissions between two days
+#### Find which Roles added/removed permissions between two days
 
 (i don't know enough sql to do this)
 
 ```sql
 ```
 
-#### Find which permissions were added between two days
+#### Find which Permissions were added between two days
 
 (i don't know enough sql to do this)
 
@@ -249,7 +249,7 @@ gcloud iam service-accounts add-iam-policy-binding iam-audit-account@$PROJECT_ID
 
 # deploy the app, note the BQ_DATASET and BQ_PROEJCTID values. Thats the dataset and project the updates will get written to
 gcloud run deploy iam-audit  --image gcr.io/$PROJECT_ID/iam_audit  \
-  --region us-central1  --platform=managed \
+  --region us-central1  --platform=managed --max-instances=1 \
   --service-account=iam-audit-account@$PROJECT_ID.iam.gserviceaccount.com  --set-env-vars "BQ_DATASET=iam"  --set-env-vars "BQ_PROJECTID=$PROJECT_ID"  -q
 
 export RUN_URL=`gcloud run services describe iam-audit --format="value(status.address.url)"`
