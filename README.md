@@ -170,10 +170,6 @@ WHERE
 ```sql
 ```
 
-Note, i happened to see this same issue while developing this.  The following shows two runs (one manual and one scheduled) that surfaced a new permission sequence but no new roles:
-
-![images/diffs.png](images/diffs.png)
-
 ---
 
 The following section details how to setup your own dataset:
@@ -317,6 +313,6 @@ bq update --source /tmp/mydataset.json $PROJECT_ID:iam
 ---
 
 
-then sit, relax and wait here till 1am bora-bora time
+then sit, relax and wait here till 1am bora-bora time (yup, i took that picture)
 
 ![images/bora-bora.jpg](images/bora-bora.jpg)

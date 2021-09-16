@@ -15,6 +15,7 @@ import (
 	"google.golang.org/api/cloudresourcemanager/v1"
 
 	"cloud.google.com/go/bigquery"
+	gcperrors "github.com/salrashid123/gcp_error_handler/golang/errors"
 	"google.golang.org/api/iam/v1"
 )
 
@@ -51,7 +52,7 @@ var (
 
 	organization = flag.String("organization", "", "OrganizationID")
 
-	mode        = flag.String("mode", "default", "Interation mode: organization|project|default")
+	mode        = flag.String("mode", "project", "Interation mode: organization|project|default")
 	projects    = make([]*cloudresourcemanager.Project, 0)
 	bqDataset   = flag.String("bqDataset", os.Getenv("BQ_DATASET"), "BigQuery Dataset to write to")
 	bqProjectID = flag.String("bqProjectID", os.Getenv("BQ_PROJECTID"), "Project for the BigQuery Dataset to write to")
@@ -235,14 +236,26 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rstatus, err := rjob.Wait(ctx)
+	// if err != nil {
+	// 	fmt.Printf("Error loading Roles Wait to BQ jobID [%s]  %v\n", rjob.ID(), err)
+	// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 	return
+	// }
 	if err != nil {
-		fmt.Printf("Error loading Roles Wait to BQ jobID [%s]  %v\n", rjob.ID(), err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		defEnv := gcperrors.New(gcperrors.Error{
+			Err: err,
+		})
+		fmt.Printf("Error Details:\n %v\n", defEnv)
 		return
 	}
 	if err := rstatus.Err(); err != nil {
-		fmt.Printf("Error loading Roles Status to BQ  jobID [%s]  %v\n", rjob.ID(), err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// fmt.Printf("Error loading Roles Status to BQ  jobID [%s]  %v\n", rjob.ID(), err)
+		// http.Error(w, err.Error(), http.StatusInternalServerError)
+		// return
+		defEnv := gcperrors.New(gcperrors.Error{
+			Err: err,
+		})
+		fmt.Printf("Error Details:\n %v\n", defEnv)
 		return
 	}
 	fmt.Printf("  Done  %t\n", rstatus.Done())
