@@ -10,7 +10,7 @@ Its like this:
 3. Cloud Run loads Permissions and Roles into two [daily partitioned tables](https://cloud.google.com/bigquery/docs/partitioned-tables#ingestion_time) in a *PUBLIC* BigQuery Dataset
 4. Users query the two tables to see daily differences in new Roles and Permissions GCP published
 
-Here' the dataset: [https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam](https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam)
+Here' the dataset: [https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam](https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam).  To use this, first [add the following project](https://cloud.google.com/bigquery/docs/bigquery-web-ui#pinning_adding_a_project) to the UI `iam-log`.  Once thats done, any query you issue will use the IAM dataset but bill your project for your own usage.
 
 with tables:
 
@@ -31,6 +31,7 @@ $ bq show --format=prettyjson --schema iam-log:iam.permissions
   }
 ]
 ```
+![images/permissions.png](images/permissions.png)
 
 - Roles (`iam-log:iam.roles`)
 
@@ -76,6 +77,7 @@ $ bq show --format=prettyjson --schema iam-log:iam.roles
 ]
 ```
 
+![images/roles.png](images/roles.png)
 ### But wait, i want to same thing for my custom roles in my org?
 
 thats not a problem, you're free to run your own (see the `diy` section below).
@@ -122,10 +124,9 @@ Get all Roles which includes `storage.objects.get` permission on a given partiti
 ```sql
 bq query --nouse_legacy_sql  '
 SELECT
-  d1.name,
-  d1.roles
+  r1
 FROM
-  iam-log.iam.permissions AS d1
+  iam-log.iam.permissions AS d1, UNNEST(roles) r1
 WHERE
   d1._PARTITIONTIME = TIMESTAMP("2021-09-14")
   AND d1.name = "storage.objects.get"
@@ -139,10 +140,9 @@ Get all Permissions included in `roles/serverless.serviceAgent` permission on a 
 ```sql
 bq query --nouse_legacy_sql  '
 SELECT
-  d1.name,
-  d1.included_permissions
+  p1
 FROM
-  iam-log.iam.roles as d1
+  iam-log.iam.roles as d1, UNNEST(included_permissions) p1
 WHERE
   d1._PARTITIONTIME = TIMESTAMP("2021-09-14")
   AND d1.name = "roles/serverless.serviceAgent"
