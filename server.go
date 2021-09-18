@@ -40,7 +40,7 @@ type Permission struct {
 }
 
 const (
-	maxRequestsPerSecond float64 = 15 // "golang.org/x/time/rate" limiter to throttle operations
+	maxRequestsPerSecond float64 = 50 // "golang.org/x/time/rate" limiter to throttle operations
 	burst                int     = 4
 	roleTableName                = "roles"
 	permissionsTableName         = "permissions"
@@ -52,7 +52,7 @@ var (
 
 	organization = flag.String("organization", "", "OrganizationID")
 
-	mode        = flag.String("mode", "project", "Interation mode: organization|project|default")
+	mode        = flag.String("mode", "default", "Interation mode: organization|project|default")
 	projects    = make([]*cloudresourcemanager.Project, 0)
 	bqDataset   = flag.String("bqDataset", os.Getenv("BQ_DATASET"), "BigQuery Dataset to write to")
 	bqProjectID = flag.String("bqProjectID", os.Getenv("BQ_PROJECTID"), "Project for the BigQuery Dataset to write to")
@@ -177,13 +177,6 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Generating BigQuery output\n")
 
-	// tokenSourceWithScopes, err := google.DefaultTokenSource(ctx, "https://www.googleapis.com/auth/bigquery", "https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/devstorage.read_only")
-	// if err != nil {
-	// 	fmt.Printf("Error Creating BQ TokenSource %v\n", err)
-	// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// bqClient, err := bigquery.NewClient(ctx, *bqProjectID, option.WithTokenSource(tokenSourceWithScopes))
 	bqClient, err := bigquery.NewClient(ctx, *bqProjectID)
 	if err != nil {
 		fmt.Printf("Error Creating BQ Client %v\n", err)
@@ -380,8 +373,8 @@ func generateMap(ctx context.Context, parent string) error {
 				//fmt.Printf("     Adding Permissions for Role  %s\n", sa.Name)
 				for _, perm := range rc.IncludedPermissions {
 					//fmt.Printf("     Appending Permission %s to Role %s", perm, sa.Name)
-					i, ok := find(permissions.Permissions, perm)
 					pmutex.Lock()
+					i, ok := find(permissions.Permissions, perm)
 					if !ok {
 						permissions.Permissions = append(permissions.Permissions, Permission{
 							Name:  perm,

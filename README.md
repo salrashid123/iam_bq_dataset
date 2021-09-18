@@ -10,7 +10,7 @@ Its like this:
 3. Cloud Run loads Permissions and Roles into two [daily partitioned tables](https://cloud.google.com/bigquery/docs/partitioned-tables#ingestion_time) in a *PUBLIC* BigQuery Dataset
 4. Users query the two tables to see daily differences in new Roles and Permissions GCP published
 
-Here' the dataset: [https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam](https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam).  To use this, first [add the following project](https://cloud.google.com/bigquery/docs/bigquery-web-ui#pinning_adding_a_project) to the UI `iam-log`.  Once thats done, any query you issue will use the IAM dataset but bill your project for your own usage.
+Here's the dataset: [https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam](https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam).  To use this, first [add the following project](https://cloud.google.com/bigquery/docs/bigquery-web-ui#pinning_adding_a_project) to the UI `iam-log`.  Once thats done, any query you issue will use the IAM dataset but bill your project for your own usage.
 
 with tables:
 
@@ -78,6 +78,8 @@ $ bq show --format=prettyjson --schema iam-log:iam.roles
 ```
 
 ![images/roles.png](images/roles.png)
+
+>> Note IAM permissions and roles rollout gradually in different regions.  The permission/role set retrieved by cloud run on any given day will reflect the state/view at that cell that cloud run connected to to retrieved the roles/permissions
 ### But wait, i want to same thing for my custom roles in my org?
 
 thats not a problem, you're free to run your own (see the `diy` section below).
@@ -158,14 +160,14 @@ SELECT
 FROM
   iam-log.iam.roles AS d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-18")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-20")
   AND d1.name NOT IN (
   SELECT
     d2.name
   FROM
     iam-log.iam.roles AS d2
   WHERE
-    d2._PARTITIONTIME = TIMESTAMP("2021-09-17"))
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-19"))
 '
 ```
 
@@ -178,14 +180,14 @@ SELECT
 FROM
   iam-log.iam.permissions AS d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-18")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-20")
   AND d1.name NOT IN (
   SELECT
     d2.name
   FROM
     iam-log.iam.permissions AS d2
   WHERE
-    d2._PARTITIONTIME = TIMESTAMP("2021-09-17"))
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-19"))
 '
 ```
 
@@ -195,7 +197,7 @@ The following section details how to setup your own dataset:
 
 ### DIY
 
-These steps requires org-level privleges just to set cloud run's service account the ability to read permissions/roles.
+These steps requires org-level privileges just to set cloud run's service account the ability to read permissions/roles.
 
 First pick a project
 
@@ -264,7 +266,7 @@ gcloud iam service-accounts add-iam-policy-binding iam-audit-account@$PROJECT_ID
 
 # deploy the app, note the BQ_DATASET and BQ_PROEJCTID values. Thats the dataset and project the updates will get written to
 gcloud run deploy iam-audit  --image gcr.io/$PROJECT_ID/iam_audit  \
-  --region us-central1  --platform=managed --max-instances=1 \
+  --region us-central1  --platform=managed --max-instances=1 --timeout=300s --memory=1G \
   --service-account=iam-audit-account@$PROJECT_ID.iam.gserviceaccount.com  --set-env-vars "BQ_DATASET=iam"  --set-env-vars "BQ_PROJECTID=$PROJECT_ID"  -q
 
 export RUN_URL=`gcloud run services describe iam-audit --format="value(status.address.url)"`
