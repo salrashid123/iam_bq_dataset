@@ -130,7 +130,7 @@ SELECT
 FROM
   iam-log.iam.permissions AS d1, UNNEST(roles) r1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-14")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-18")
   AND d1.name = "storage.objects.get"
 '
 ```
@@ -146,7 +146,7 @@ SELECT
 FROM
   iam-log.iam.roles as d1, UNNEST(included_permissions) p1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-14")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-18")
   AND d1.name = "roles/serverless.serviceAgent"
 '
 ```
