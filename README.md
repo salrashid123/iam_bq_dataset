@@ -149,25 +149,44 @@ WHERE
 '
 ```
 
-#### Get Permissions differences between two days for a given Role
-
-(i don't know enough sql to do this)
-
-```sql
-```
-
 #### Find which Roles added/removed permissions between two days
 
-(i don't know enough sql to do this)
-
 ```sql
+bq query --nouse_legacy_sql  '
+SELECT
+  d1.name
+FROM
+  iam-log.iam.roles AS d1
+WHERE
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-18")
+  AND d1.name NOT IN (
+  SELECT
+    d2.name
+  FROM
+    iam-log.iam.roles AS d2
+  WHERE
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-17"))
+'
 ```
 
-#### Find which Permissions were added between two days
-
-(i don't know enough sql to do this)
+#### Find which Permissions added/removed permissions between two days
 
 ```sql
+bq query --nouse_legacy_sql  '
+SELECT
+  d1.name
+FROM
+  iam-log.iam.permissions AS d1
+WHERE
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-18")
+  AND d1.name NOT IN (
+  SELECT
+    d2.name
+  FROM
+    iam-log.iam.permissions AS d2
+  WHERE
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-17"))
+'
 ```
 
 ---
