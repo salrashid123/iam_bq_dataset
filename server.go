@@ -27,6 +27,7 @@ type Role struct {
 	Name                string   `json:"name"`
 	Role                iam.Role `json:"role"`
 	IncludedPermissions []string `json:"included_permissions"`
+	Region              string   `json:"region"`
 }
 
 type Permissions struct {
@@ -35,8 +36,9 @@ type Permissions struct {
 
 type Permission struct {
 	//Permission iam.Permission // there's no direct way to query a given permission detail!
-	Name  string   `json:"name"`
-	Roles []string `json:"roles"`
+	Name   string   `json:"name"`
+	Roles  []string `json:"roles"`
+	Region string   `json:"region"`
 }
 
 const (
@@ -56,6 +58,7 @@ var (
 	projects    = make([]*cloudresourcemanager.Project, 0)
 	bqDataset   = flag.String("bqDataset", os.Getenv("BQ_DATASET"), "BigQuery Dataset to write to")
 	bqProjectID = flag.String("bqProjectID", os.Getenv("BQ_PROJECTID"), "Project for the BigQuery Dataset to write to")
+	region      = flag.String("region", os.Getenv("REGION"), "Region where IAM roles/permissions query is run")
 	permissions = &Permissions{}
 	roles       = &Roles{}
 	limiter     *rate.Limiter
@@ -74,16 +77,18 @@ var (
 				{Name: "description", Type: bigquery.StringFieldType},
 			}},
 		{Name: "included_permissions", Type: bigquery.StringFieldType, Repeated: true},
+		{Name: "region", Type: bigquery.StringFieldType, Required: true},
 	}
 
 	permissionsSchema = bigquery.Schema{
 		{Name: "name", Type: bigquery.StringFieldType, Required: true},
 		{Name: "roles", Type: bigquery.StringFieldType, Repeated: true},
+		{Name: "region", Type: bigquery.StringFieldType, Required: true},
 	}
 )
 
 func fronthandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("/ called")
+	fmt.Printf("/ called for region %s\n", *region)
 
 	ctx := context.Background()
 	crmService, err := cloudresourcemanager.NewService(ctx)
@@ -201,7 +206,7 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	fmt.Printf("Uploading [%d] Roles\n", len(roles.Roles))
+	fmt.Printf("Uploading [%d] Roles from region [%s]\n", len(roles.Roles), *region)
 
 	var rlines []string
 	for _, v := range roles.Roles {
@@ -270,7 +275,7 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	fmt.Printf("Uploading [%d] Permissions\n", len(permissions.Permissions))
+	fmt.Printf("Uploading [%d] Permissions from region [%s]\n", len(permissions.Permissions), *region)
 
 	var plines []string
 	for _, v := range permissions.Permissions {
@@ -362,6 +367,7 @@ func generateMap(ctx context.Context, parent string) error {
 					Name:                sa.Name,
 					Role:                *sa,
 					IncludedPermissions: rc.IncludedPermissions,
+					Region:              *region,
 				}
 				cmutex.Lock()
 				_, ok := find(roles.Roles, sa.Name)
@@ -377,8 +383,9 @@ func generateMap(ctx context.Context, parent string) error {
 					i, ok := find(permissions.Permissions, perm)
 					if !ok {
 						permissions.Permissions = append(permissions.Permissions, Permission{
-							Name:  perm,
-							Roles: []string{sa.Name},
+							Name:   perm,
+							Roles:  []string{sa.Name},
+							Region: *region,
 						})
 					} else {
 						p := permissions.Permissions[i]
