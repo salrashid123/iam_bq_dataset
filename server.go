@@ -353,14 +353,14 @@ func generateMap(ctx context.Context, parent string) error {
 				defer wg.Done()
 				var err error
 				if err := limiter.Wait(ctx); err != nil {
-					fmt.Printf("Error in rate limiter %v", err)
+					fmt.Printf("Error in rate limiter %v\n", err)
 				}
 				if ctx.Err() != nil {
-					fmt.Printf("Error in rate limiter %v", err)
+					fmt.Printf("Error in rate limiter %v\n", err)
 				}
 				rc, err := ors.Get(sa.Name).Do()
 				if err != nil {
-					fmt.Printf("Error getting role name %v", err)
+					fmt.Printf("Error getting role name %v\n", err)
 					return
 				}
 				cr := &Role{

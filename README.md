@@ -207,11 +207,13 @@ WHERE
 '
 ```
 
-#### Find which Permissions added/removed permissions between two regions on the same day
+#### Find which Permissions/Roles are visible between two regions on the same day
 
-IAM permissions and roles rollout gradually in different regions.  The permission/role set retrieved by cloud run on any given day will reflect the state/view at that cell that cloud run connected to to retrieved the roles/permissions
+IAM permissions and roles rollout gradually in different regions.  The permission/role set retrieved by cloud run on any given day will reflect the state/view at that cell that cloud run connected to to retrieved the roles/permissions.  [IAM List Roles](https://cloud.google.com/iam/docs/reference/rest/v1/projects.roles/list) API call is invoked in each region and whatever map it returns is what will populate the permissions and roles in that region.
 
-To (somewhat imprecisely) account for this, this script deploys about several different cloud run instances in different [Cloud Run Regions](https://cloud.google.com/run/docs/locations) globally.  The idea is that each cloud run instance that is invoked will query the IAM permission active sets within a region.  This is ofcourse not a guarantee since a CR instance can query a different region, but its likely that it stays in region and reflects a local map.   This script also just iterates over the following regions that are globally available.  If needed, tune this to your needs for wherever you deploy within your organization
+To (somewhat imprecisely) account for this, this script deploys about several different cloud run instances in different [Cloud Run Regions](https://cloud.google.com/run/docs/locations) globally.  The idea is that each cloud run instance that is invoked will query the IAM Roles active sets within a region and _from_ the [Role Response](https://cloud.google.com/iam/docs/reference/rest/v1/ListRolesResponse) populate the list of permissions.  If a role is not found and includes a permission thats exclusive to that role, _it will not get listed in that region_.  (note, this last bit is important)
+
+It is ofcourse not a guarantee that the map reflects the region exactly since a CR instance can query a different region, but its likely that it stays in region and reflects a local map.   This script also just iterates over the following regions that are globally available.  If needed, tune this to your needs for wherever you deploy within your organization
 
 ```bash
 export REGIONS=asia-east1,asia-northeast1,asia-northeast2,europe-north1,europe-west1,europe-west4,us-central1,us-east1,us-east4,us-west1,asia-east2,asia-northeast3,asia-southeast1,asia-southeast2,asia-south1,asia-south2,australia-southeast1,australia-southeast2,europe-central2,europe-west2,europe-west3,europe-west6,northamerica-northeast1,northamerica-northeast2,southamerica-east1,us-west2,us-west3,us-west4
@@ -220,7 +222,7 @@ export REGIONS=asia-east1,asia-northeast1,asia-northeast2,europe-north1,europe-w
 To see the differences in permissions today between two regions:
 
 ```sql
-$ bq query --nouse_legacy_sql  '
+bq query --nouse_legacy_sql  '
 SELECT
   d1.name
 FROM
@@ -259,14 +261,46 @@ WHERE
     +-------------------------------------------------------------------+
 ```
 
-In this case `us-east4` has these extra permissions visible when compared to `us-central`
+In this case `us-east4` has these extra permissions visible when compared to `us-central1`.   Again, the permissions per region is populated by the RoleList API call which means if a role is not found and that role exclusively contains a permission (i.,e not other role includes that permission), then that permission will not be listed.
 
-![images/rollout.png](images/rollout.png)
+For roles, consider the query below which lists the roles that are visible between 
+
+```sql
+bq query --nouse_legacy_sql  '
+SELECT
+  d1.name
+FROM
+  iam-log.iam.roles AS d1
+WHERE
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-21")
+  AND d1.region = "us-west2"  
+  AND d1.name NOT IN (
+  SELECT
+    d2.name
+  FROM
+    iam-log.iam.roles AS d2
+  WHERE
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-21")
+    AND d2.region = "us-east1")
+'
+
+    +---------------------------------------+
+    |                 name                  |
+    +---------------------------------------+
+    | roles/gkebackup.delegatedBackupAdmin  |
+    | roles/lookerpa.internalAdmin          |
+    | roles/gkebackup.delegatedRestoreAdmin |
+    +---------------------------------------+
+```
+
+In this case, `us-west2` has three additional roles when compared to `us-east1`
+
+
 
 #### Find number of Permissions visible per Region
 
 ```sql
-$ bq query --nouse_legacy_sql  '
+bq query --nouse_legacy_sql  '
 SELECT
   d1.region,
   COUNT(*) AS num_permissions
@@ -318,10 +352,12 @@ eg for `9/19/19`
     +-------------------------+-----------------+
 ```
 
+Again, its important to note that the permission list is dependent on the roles list API call.  If a role is not found in a region and if that role exclusively uses a permission, then that permission will not get listed.
+
 #### Find number of Roles visible per Region
 
 ```sql
-$ bq query --nouse_legacy_sql  '
+bq query --nouse_legacy_sql  '
 SELECT
   d1.region,
   COUNT(*) AS num_roles
