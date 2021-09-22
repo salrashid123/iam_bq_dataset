@@ -6,9 +6,11 @@ Bigquery DataSet that contains a daily snapshot of all _Standard_ Google Cloud I
 Its like this:
 
 1. Everyday at 1am bora-bora time, a cloud scheduler securely triggers  Cloud Run application in various global regions
-2. Cloud Run iterates over all Roles and Permissions Google Cloud Publishes
+2. Cloud Run iterates over all Roles and Permissions in Google Cloud
 3. Cloud Run loads Permissions and Roles into two [daily partitioned tables](https://cloud.google.com/bigquery/docs/partitioned-tables#ingestion_time) in a *PUBLIC* BigQuery Dataset
 4. Users query the two tables to see daily differences in new Roles and Permissions GCP published
+
+> This is **not** an officially supported Google product
 
 Here's the dataset: [https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam](https://console.cloud.google.com/bigquery?project=iam-log&p=iam-log&d=iam).  To use this, first [add the following project](https://cloud.google.com/bigquery/docs/bigquery-web-ui#pinning_adding_a_project) to the UI `iam-log`.  Once thats done, any query you issue will use the IAM dataset but bill your project for your own usage.
 
@@ -17,7 +19,8 @@ with tables:
 - Permissions (`iam-log:iam.permissions`)
 
 ```json
-$ bq show --format=prettyjson --schema iam-log:iam.permissions
+bq show --format=prettyjson --schema iam-log:iam.permissions
+
 [
   {
     "mode": "REQUIRED",
@@ -25,13 +28,41 @@ $ bq show --format=prettyjson --schema iam-log:iam.permissions
     "type": "STRING"
   },
   {
-    "mode": "REPEATED",
-    "name": "roles",
+    "mode": "REQUIRED",
+    "name": "region",
     "type": "STRING"
   },
   {
-    "mode": "REQUIRED",
-    "name": "region",
+    "name": "title",
+    "type": "STRING"
+  },
+  {
+    "name": "description",
+    "type": "STRING"
+  },
+  {
+    "name": "stage",
+    "type": "STRING"
+  },
+  {
+    "name": "apiDisabled",
+    "type": "BOOLEAN"
+  },
+  {
+    "name": "customRolesSupportLevel",
+    "type": "STRING"
+  },
+  {
+    "name": "onlyInPredefinedRoles",
+    "type": "BOOLEAN"
+  },
+  {
+    "name": "primaryPermission",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "roles",
     "type": "STRING"
   }
 ]
@@ -41,7 +72,8 @@ $ bq show --format=prettyjson --schema iam-log:iam.permissions
 - Roles (`iam-log:iam.roles`)
 
 ```json
-$ bq show --format=prettyjson --schema iam-log:iam.roles
+bq show --format=prettyjson --schema iam-log:iam.roles
+
 [
   {
     "mode": "REQUIRED",
@@ -49,30 +81,24 @@ $ bq show --format=prettyjson --schema iam-log:iam.roles
     "type": "STRING"
   },
   {
-    "fields": [
-      {
-        "name": "title",
-        "type": "STRING"
-      },
-      {
-        "name": "stage",
-        "type": "STRING"
-      },
-      {
-        "name": "etag",
-        "type": "STRING"
-      },
-      {
-        "name": "name",
-        "type": "STRING"
-      },
-      {
-        "name": "description",
-        "type": "STRING"
-      }
-    ],
-    "name": "role",
-    "type": "RECORD"
+    "name": "title",
+    "type": "STRING"
+  },
+  {
+    "name": "stage",
+    "type": "STRING"
+  },
+  {
+    "name": "etag",
+    "type": "STRING"
+  },
+  {
+    "name": "deleted",
+    "type": "BOOLEAN"
+  },
+  {
+    "name": "description",
+    "type": "STRING"
   },
   {
     "mode": "REPEATED",
@@ -83,7 +109,7 @@ $ bq show --format=prettyjson --schema iam-log:iam.roles
     "mode": "REQUIRED",
     "name": "region",
     "type": "STRING"
-  }  
+  }
 ]
 ```
 
@@ -100,13 +126,12 @@ Just modify the default cloud run image you deploy and set the `mode` variable a
 
 ```golang
 mode        = flag.String("mode", "default", "Interation mode: organization|project|default")
-organization = flag.String("organization", "", "OrganizationID")
+organization = flag.String("organization", os.Getenv("ORGANIZATION_ID"), "OrganizationID")
 ```
 
 Ofcourse, the cloud run SA you deploy will need access to view roles/permissions in your org (which is already granted through the IAM bindings below)
 
 
-> This is **not** an officially supported Google product
 
 ### BQ Samples
 
@@ -139,7 +164,7 @@ SELECT
 FROM
   iam-log.iam.permissions AS d1, UNNEST(roles) r1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-19")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-22")
   AND d1.name = "storage.objects.get"
   AND d1.region = "us-central1"
 '
@@ -157,7 +182,7 @@ FROM
   iam-log.iam.roles AS d1,
   UNNEST(included_permissions) p1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-19")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-22")
   AND d1.name = "roles/serverless.serviceAgent"
   AND d1.region = "us-central1"
 '
@@ -172,7 +197,7 @@ SELECT
 FROM
   iam-log.iam.roles AS d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-20")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-23")
   AND d1.region = "us-central1"
   AND d1.name NOT IN (
   SELECT
@@ -180,7 +205,7 @@ WHERE
   FROM
     iam-log.iam.roles AS d2
   WHERE
-    d2._PARTITIONTIME = TIMESTAMP("2021-09-19")
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-22")
     AND d2.region = "us-central1")
 '
 ```
@@ -194,7 +219,7 @@ SELECT
 FROM
   iam-log.iam.permissions AS d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-20")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-23")
   AND d1.region = "us-central1"  
   AND d1.name NOT IN (
   SELECT
@@ -202,16 +227,18 @@ WHERE
   FROM
     iam-log.iam.permissions AS d2
   WHERE
-    d2._PARTITIONTIME = TIMESTAMP("2021-09-19")
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-22")
     AND d2.region = "us-central1")
 '
 ```
 
 #### Find which Permissions/Roles are visible between two regions on the same day
 
-IAM permissions and roles rollout gradually in different regions.  The permission/role set retrieved by cloud run on any given day will reflect the state/view at that cell that cloud run connected to to retrieved the roles/permissions.  [IAM List Roles](https://cloud.google.com/iam/docs/reference/rest/v1/projects.roles/list) API call is invoked in each region and whatever map it returns is what will populate the permissions and roles in that region.
+IAM permissions and roles rollout gradually in different regions.  The permission/role set retrieved by cloud run on any given day will reflect the state/view at that cell that cloud run connected to to retrieved the roles/permissions.  
 
-To (somewhat imprecisely) account for this, this script deploys about several different cloud run instances in different [Cloud Run Regions](https://cloud.google.com/run/docs/locations) globally.  The idea is that each cloud run instance that is invoked will query the IAM Roles active sets within a region and _from_ the [Role Response](https://cloud.google.com/iam/docs/reference/rest/v1/ListRolesResponse) populate the list of permissions.  If a role is not found and includes a permission thats exclusive to that role, _it will not get listed in that region_.  (note, this last bit is important)
+To (somewhat imprecisely) account for this, this script deploys about several different cloud run instances in different [Cloud Run Regions](https://cloud.google.com/run/docs/locations) globally.  The idea is that each cloud run instance that is invoked will query the IAM Roles active sets within a region and then _from_ the [Role Response](https://cloud.google.com/iam/docs/reference/rest/v1/ListRolesResponse) populate the list of permissions.  However, a role may not found within that region which will omit any permissions that maybe visible.   To account for that, the permission list is retrieved *first* using a [iam.queryTestablePermissions()](https://cloud.google.com/iam/docs/reference/rest/v1/permissions/queryTestablePermissions) API call against the root organization resource (`//cloudresourcemanager.googleapis.com/organizations/`)
+
+For each Role thats found using [IAM List Roles](https://cloud.google.com/iam/docs/reference/rest/v1/projects.roles/list) API call is invoked in each region the permissions back to what was found globally using queryTestablePermissions
 
 It is ofcourse not a guarantee that the map reflects the region exactly since a CR instance can query a different region, but its likely that it stays in region and reflects a local map.   This script also just iterates over the following regions that are globally available.  If needed, tune this to your needs for wherever you deploy within your organization
 
@@ -219,7 +246,34 @@ It is ofcourse not a guarantee that the map reflects the region exactly since a 
 export REGIONS=asia-east1,asia-northeast1,asia-northeast2,europe-north1,europe-west1,europe-west4,us-central1,us-east1,us-east4,us-west1,asia-east2,asia-northeast3,asia-southeast1,asia-southeast2,asia-south1,asia-south2,australia-southeast1,australia-southeast2,europe-central2,europe-west2,europe-west3,europe-west6,northamerica-northeast1,northamerica-northeast2,southamerica-east1,us-west2,us-west3,us-west4
 ```
 
-To see the differences in permissions today between two regions:
+Consider an iteration between two regions here for `us-west2` and `us-east1`.  
+
+
+In `us-west2` has more _permissions_ visible while  `us-east1` was not able to find a specific role `roles/recommender.bigQueryCapacityCommitmentsViewer`.  (why the total number of roles is the same is describe a bit below.)
+
+```log
+
+A 2021-09-22T11:50:44.221238Z done 
+A 2021-09-22T11:50:41.647731Z Uploading [4760] Permissions from region [us-west2] 
+A 2021-09-22T11:50:37.918094Z Uploading [882] Roles from region [us-west2] 
+A 2021-09-22T11:50:37.718748Z Generating BigQuery output 
+A 2021-09-22T11:50:19.405329Z Getting Default Roles/Permissions 
+A 2021-09-22T11:50:19.405305Z Found [4760] permissions on //cloudresourcemanager.googleapis.com/organizations/<organizationID>   
+A 2021-09-22T11:50:01.464765Z / called for region us-west2 
+A 2021-09-22T11:50:01.389747Z Starting Server.. 
+
+A 2021-09-22T11:14:38.967673Z done 
+A 2021-09-22T11:14:36.605246Z Uploading [4778] Permissions from region [us-east1] 
+A 2021-09-22T11:14:32.656471Z Uploading [882] Roles from region [us-east1] 
+A 2021-09-22T11:14:32.524652Z Generating BigQuery output 
+A 2021-09-22T11:14:29.103389Z Error getting role name googleapi: Error 404: The role named roles/recommender.bigQueryCapacityCommitmentsViewer was not found., notFound 
+A 2021-09-22T11:14:14.319069Z Getting Default Roles/Permissions 
+A 2021-09-22T11:14:14.319052Z Found [4778] permissions on //cloudresourcemanager.googleapis.com/organizations/<organizationID>   
+A 2021-09-22T11:14:01.572271Z / called for region us-east1 
+A 2021-09-22T11:14:01.538825Z Starting Server.. 
+```
+
+Here is the query for the difference in permissions
 
 ```sql
 bq query --nouse_legacy_sql  '
@@ -228,40 +282,41 @@ SELECT
 FROM
   iam-log.iam.permissions AS d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-19")
-  AND d1.region = "us-east4"  
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-22")
+  AND d1.region = "us-east1"  
   AND d1.name NOT IN (
   SELECT
     d2.name
   FROM
     iam-log.iam.permissions AS d2
   WHERE
-    d2._PARTITIONTIME = TIMESTAMP("2021-09-19")
-    AND d2.region = "us-central1")
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-22")
+    AND d2.region = "us-west2")
 '
 
-    +-------------------------------------------------------------------+
-    |                               name                                |
-    +-------------------------------------------------------------------+
-    | recommender.cloudsqlIdleInstanceRecommendations.update            |
-    | recommender.cloudsqlInstanceActivityInsights.update               |
-    | recommender.cloudsqlInstanceCpuUsageInsights.update               |
-    | recommender.cloudsqlInstanceMemoryUsageInsights.update            |
-    | recommender.cloudsqlOverprovisionedInstanceRecommendations.update |
-    | recommender.cloudsqlIdleInstanceRecommendations.get               |
-    | recommender.cloudsqlInstanceActivityInsights.get                  |
-    | recommender.cloudsqlInstanceCpuUsageInsights.get                  |
-    | recommender.cloudsqlInstanceMemoryUsageInsights.get               |
-    | recommender.cloudsqlOverprovisionedInstanceRecommendations.get    |
-    | recommender.cloudsqlIdleInstanceRecommendations.list              |
-    | recommender.cloudsqlInstanceActivityInsights.list                 |
-    | recommender.cloudsqlInstanceCpuUsageInsights.list                 |
-    | recommender.cloudsqlInstanceMemoryUsageInsights.list              |
-    | recommender.cloudsqlOverprovisionedInstanceRecommendations.list   |
-    +-------------------------------------------------------------------+
+    +---------------------------------------------+
+    |                    name                     |
+    +---------------------------------------------+
+    | integrations.securityIntegrationVers.list   |
+    | integrations.securityExecutions.cancel      |
+    | integrations.securityAuthConfigs.create     |
+    | integrations.securityAuthConfigs.update     |
+    | integrations.securityAuthConfigs.get        |
+    | integrations.securityExecutions.get         |
+    | integrations.securityIntegTempVers.get      |
+    | integrations.securityAuthConfigs.list       |
+    | integrations.securityIntegTempVers.list     |
+    | integrations.securityIntegrations.list      |
+    | integrations.securityIntegrationVers.create |
+    | integrations.securityAuthConfigs.delete     |
+    | integrations.securityIntegrationVers.deploy |
+    | integrations.securityIntegrationVers.get    |
+    | integrations.securityExecutions.list        |
+    | integrations.securityIntegTempVers.create   |
+    | integrations.securityIntegrations.invoke    |
+    | integrations.securityIntegrationVers.update |
+    +---------------------------------------------+
 ```
-
-In this case `us-east4` has these extra permissions visible when compared to `us-central1`.   Again, the permissions per region is populated by the RoleList API call which means if a role is not found and that role exclusively contains a permission (i.,e not other role includes that permission), then that permission will not be listed.
 
 For roles, consider the query below which lists the roles that are visible between 
 
@@ -272,7 +327,7 @@ SELECT
 FROM
   iam-log.iam.roles AS d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-21")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-22")
   AND d1.region = "us-west2"  
   AND d1.name NOT IN (
   SELECT
@@ -280,22 +335,44 @@ WHERE
   FROM
     iam-log.iam.roles AS d2
   WHERE
-    d2._PARTITIONTIME = TIMESTAMP("2021-09-21")
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-22")
     AND d2.region = "us-east1")
 '
 
-    +---------------------------------------+
-    |                 name                  |
-    +---------------------------------------+
-    | roles/gkebackup.delegatedBackupAdmin  |
-    | roles/lookerpa.internalAdmin          |
-    | roles/gkebackup.delegatedRestoreAdmin |
-    +---------------------------------------+
+    +-----------------------------------------------------+
+    |                        name                         |
+    +-----------------------------------------------------+
+    | roles/recommender.bigQueryCapacityCommitmentsViewer |
+    +-----------------------------------------------------+
 ```
 
-In this case, `us-west2` has three additional roles when compared to `us-east1`
+Confusingly enough, the total number of roles is the same on both regions...thats because `us-east1` happens to have an extra role visible
 
+```sql
+bq query --nouse_legacy_sql  '
+SELECT
+  d1.name
+FROM
+  iam-log.iam.roles AS d1
+WHERE
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-22")
+  AND d1.region = "us-east1"  
+  AND d1.name NOT IN (
+  SELECT
+    d2.name
+  FROM
+    iam-log.iam.roles AS d2
+  WHERE
+    d2._PARTITIONTIME = TIMESTAMP("2021-09-22")
+    AND d2.region = "us-west2")
+'
 
+    +---------------------------------------------+
+    |                    name                     |
+    +---------------------------------------------+
+    | roles/integrations.securityIntegrationAdmin |
+    +---------------------------------------------+
+```
 
 #### Find number of Permissions visible per Region
 
@@ -307,52 +384,46 @@ SELECT
 FROM
   iam-log.iam.permissions AS d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-19")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-22")
 GROUP BY
   d1.region
 ORDER BY 
   num_permissions DESC, d1.region
 '
-```
 
-eg for `9/19/19`
-
-```
     +-------------------------+-----------------+
     |         region          | num_permissions |
     +-------------------------+-----------------+
-    | europe-central2         |            4730 |
-    | europe-north1           |            4730 |
-    | europe-west1            |            4730 |
-    | europe-west2            |            4730 |
-    | europe-west3            |            4730 |
-    | europe-west4            |            4730 |
-    | europe-west6            |            4730 |
-    | northamerica-northeast1 |            4730 |
-    | northamerica-northeast2 |            4730 |
-    | southamerica-east1      |            4730 |
-    | us-east1                |            4730 |
-    | us-east4                |            4730 |
-    | asia-east1              |            4715 |
-    | asia-east2              |            4715 |
-    | asia-northeast1         |            4715 |
-    | asia-northeast2         |            4715 |
-    | asia-northeast3         |            4715 |
-    | asia-south1             |            4715 |
-    | asia-south2             |            4715 |
-    | asia-southeast1         |            4715 |
-    | asia-southeast2         |            4715 |
-    | australia-southeast1    |            4715 |
-    | australia-southeast2    |            4715 |
-    | us-central1             |            4715 |
-    | us-west1                |            4715 |
-    | us-west2                |            4715 |
-    | us-west3                |            4715 |
-    | us-west4                |            4715 |
+    | europe-central2         |            4778 |
+    | europe-north1           |            4778 |
+    | europe-west1            |            4778 |
+    | europe-west2            |            4778 |
+    | europe-west3            |            4778 |
+    | europe-west4            |            4778 |
+    | europe-west6            |            4778 |
+    | northamerica-northeast1 |            4778 |
+    | northamerica-northeast2 |            4778 |
+    | southamerica-east1      |            4778 |
+    | us-east1                |            4778 |
+    | us-east4                |            4778 |
+    | asia-east1              |            4760 |
+    | asia-east2              |            4760 |
+    | asia-northeast1         |            4760 |
+    | asia-northeast2         |            4760 |
+    | asia-northeast3         |            4760 |
+    | asia-south1             |            4760 |
+    | asia-south2             |            4760 |
+    | asia-southeast1         |            4760 |
+    | asia-southeast2         |            4760 |
+    | australia-southeast1    |            4760 |
+    | australia-southeast2    |            4760 |
+    | us-central1             |            4760 |
+    | us-west1                |            4760 |
+    | us-west2                |            4760 |
+    | us-west3                |            4760 |
+    | us-west4                |            4760 |
     +-------------------------+-----------------+
 ```
-
-Again, its important to note that the permission list is dependent on the roles list API call.  If a role is not found in a region and if that role exclusively uses a permission, then that permission will not get listed.
 
 #### Find number of Roles visible per Region
 
@@ -364,12 +435,45 @@ SELECT
 FROM
   iam-log.iam.roles AS d1
 WHERE
-  d1._PARTITIONTIME = TIMESTAMP("2021-09-19")
+  d1._PARTITIONTIME = TIMESTAMP("2021-09-22")
 GROUP BY
   d1.region
 ORDER BY 
   num_roles DESC, d1.region
 '
+
++-------------------------+-----------+
+|         region          | num_roles |
++-------------------------+-----------+
+| asia-east1              |       885 |
+| us-west3                |       885 |
+| asia-south2             |       884 |
+| europe-north1           |       884 |
+| europe-central2         |       883 |
+| europe-west3            |       883 |
+| europe-west6            |       883 |
+| northamerica-northeast1 |       883 |
+| asia-east2              |       882 |
+| asia-northeast1         |       882 |
+| asia-northeast2         |       882 |
+| asia-northeast3         |       882 |
+| asia-south1             |       882 |
+| asia-southeast2         |       882 |
+| australia-southeast1    |       882 |
+| australia-southeast2    |       882 |
+| europe-west1            |       882 |
+| southamerica-east1      |       882 |
+| us-central1             |       882 |
+| us-east1                |       882 |
+| us-west1                |       882 |
+| us-west2                |       882 |
+| europe-west2            |       881 |
+| europe-west4            |       881 |
+| northamerica-northeast2 |       881 |
+| us-east4                |       881 |
+| us-west4                |       881 |
+| asia-southeast1         |       880 |
++-------------------------+-----------+
 ```
 
 ---
@@ -465,6 +569,10 @@ gcloud projects  add-iam-policy-binding $PROJECT_ID \
 Since the `$REGION` contains all available regions, there will be one Run instance per region
 
 ![images/cloud_run_instances.png](images/cloud_run_instances.png)
+
+Note, you can also query the stdout of each invocation of Cloud Run from another public dataset which is a [Logs->BQ Logging Export](https://cloud.google.com/logging/docs/export/bigquery)
+
+* `run_googleapis_com_stdout` stdout of each invocation
 
 #### Create Cloud Scheduler
 

@@ -4,6 +4,7 @@
 i=0
 for region in $(echo $REGIONS | sed "s/,/ /g")
 do
+  echo $region
   gcloud scheduler jobs run iam-scheduler-$region  
   ((i=i+1))
   sleep 120

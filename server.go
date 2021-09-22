@@ -15,7 +15,7 @@ import (
 	"google.golang.org/api/cloudresourcemanager/v1"
 
 	"cloud.google.com/go/bigquery"
-	gcperrors "github.com/salrashid123/gcp_error_handler/golang/errors"
+
 	"google.golang.org/api/iam/v1"
 )
 
@@ -25,7 +25,11 @@ type Roles struct {
 
 type Role struct {
 	Name                string   `json:"name"`
-	Role                iam.Role `json:"role"`
+	Title               string   `json:"title,omitempty"`
+	Description         string   `json:"description,omitempty"`
+	Stage               string   `json:"stage,omitempty"`
+	Deleted             bool     `json:"deleted,omitempty"`
+	Etag                string   `json:"etag,omitempty"`
 	IncludedPermissions []string `json:"included_permissions"`
 	Region              string   `json:"region"`
 }
@@ -35,10 +39,16 @@ type Permissions struct {
 }
 
 type Permission struct {
-	//Permission iam.Permission // there's no direct way to query a given permission detail!
-	Name   string   `json:"name"`
-	Roles  []string `json:"roles"`
-	Region string   `json:"region"`
+	Name                    string   `json:"name"`
+	Title                   string   `json:"title,omitempty"`
+	Description             string   `json:"description,omitempty"`
+	Stage                   string   `json:"stage,omitempty"`
+	ApiDisabled             bool     `json:"apiDisabled,omitempty"`
+	CustomRolesSupportLevel string   `json:"customRolesSupportLevel,omitempty"`
+	OnlyInPredefinedRoles   bool     `json:"onlyInPredefinedRoles,omitempty"`
+	PrimaryPermission       string   `json:"primaryPermission,omitempty"`
+	Roles                   []string `json:"roles"`
+	Region                  string   `json:"region"`
 }
 
 const (
@@ -52,9 +62,9 @@ var (
 	cmutex = &sync.Mutex{}
 	pmutex = &sync.Mutex{}
 
-	organization = flag.String("organization", "", "OrganizationID")
+	organization = flag.String("organization", os.Getenv("ORGANIZATION_ID"), "OrganizationID")
 
-	mode        = flag.String("mode", "default", "Interation mode: organization|project|default")
+	mode        = flag.String("mode", "default", "Iteration mode: organization|project|default")
 	projects    = make([]*cloudresourcemanager.Project, 0)
 	bqDataset   = flag.String("bqDataset", os.Getenv("BQ_DATASET"), "BigQuery Dataset to write to")
 	bqProjectID = flag.String("bqProjectID", os.Getenv("BQ_PROJECTID"), "Project for the BigQuery Dataset to write to")
@@ -66,24 +76,26 @@ var (
 
 	rolesSchema = bigquery.Schema{
 		{Name: "name", Type: bigquery.StringFieldType, Required: true},
-		{Name: "role",
-			Type:     bigquery.RecordFieldType,
-			Repeated: false,
-			Schema: bigquery.Schema{
-				{Name: "title", Type: bigquery.StringFieldType},
-				{Name: "stage", Type: bigquery.StringFieldType},
-				{Name: "etag", Type: bigquery.StringFieldType},
-				{Name: "name", Type: bigquery.StringFieldType},
-				{Name: "description", Type: bigquery.StringFieldType},
-			}},
+		{Name: "title", Type: bigquery.StringFieldType},
+		{Name: "stage", Type: bigquery.StringFieldType},
+		{Name: "etag", Type: bigquery.StringFieldType},
+		{Name: "deleted", Type: bigquery.BooleanFieldType},
+		{Name: "description", Type: bigquery.StringFieldType},
 		{Name: "included_permissions", Type: bigquery.StringFieldType, Repeated: true},
 		{Name: "region", Type: bigquery.StringFieldType, Required: true},
 	}
 
 	permissionsSchema = bigquery.Schema{
 		{Name: "name", Type: bigquery.StringFieldType, Required: true},
-		{Name: "roles", Type: bigquery.StringFieldType, Repeated: true},
 		{Name: "region", Type: bigquery.StringFieldType, Required: true},
+		{Name: "title", Type: bigquery.StringFieldType},
+		{Name: "description", Type: bigquery.StringFieldType},
+		{Name: "stage", Type: bigquery.StringFieldType},
+		{Name: "apiDisabled", Type: bigquery.BooleanFieldType},
+		{Name: "customRolesSupportLevel", Type: bigquery.StringFieldType},
+		{Name: "onlyInPredefinedRoles", Type: bigquery.BooleanFieldType},
+		{Name: "primaryPermission", Type: bigquery.StringFieldType},
+		{Name: "roles", Type: bigquery.StringFieldType, Repeated: true},
 	}
 )
 
@@ -103,8 +115,45 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ors = iam.NewRolesService(iamService)
+	ops := iam.NewPermissionsService(iamService)
 
 	limiter = rate.NewLimiter(rate.Limit(maxRequestsPerSecond), burst)
+
+	// First use iam api to get all testable permissions from root hierarchy (i.,e organization)
+
+	nextPageToken := ""
+	for {
+		ps, err := ops.QueryTestablePermissions(&iam.QueryTestablePermissionsRequest{
+			FullResourceName: fmt.Sprintf("//cloudresourcemanager.googleapis.com/organizations/%s", *organization),
+			PageToken:        nextPageToken,
+		}).Do()
+		if err != nil {
+			fmt.Printf("Error getting  QueryTestablePermissions %v\n", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for _, sa := range ps.Permissions {
+			permissions.Permissions = append(permissions.Permissions, Permission{
+				Name:                    sa.Name,
+				Title:                   sa.Title,
+				Description:             sa.Description,
+				Stage:                   sa.Stage,
+				ApiDisabled:             sa.ApiDisabled,
+				CustomRolesSupportLevel: sa.CustomRolesSupportLevel,
+				OnlyInPredefinedRoles:   sa.OnlyInPredefinedRoles,
+				PrimaryPermission:       sa.PrimaryPermission,
+				Roles:                   []string{},
+				Region:                  *region,
+			})
+		}
+
+		nextPageToken = ps.NextPageToken
+		if nextPageToken == "" {
+			break
+		}
+	}
+
+	fmt.Printf("Found [%d] permissions on //cloudresourcemanager.googleapis.com/organizations/<organizationID>  \n", len(permissions.Permissions))
 
 	switch *mode {
 	case "organization":
@@ -240,23 +289,17 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 	// 	return
 	// }
 	if err != nil {
-		defEnv := gcperrors.New(gcperrors.Error{
-			Err: err,
-		})
-		fmt.Printf("Error Details:\n %v\n", defEnv)
+		fmt.Printf("Error loading Data:\n %v\n", err)
 		return
 	}
 	if err := rstatus.Err(); err != nil {
 		// fmt.Printf("Error loading Roles Status to BQ  jobID [%s]  %v\n", rjob.ID(), err)
 		// http.Error(w, err.Error(), http.StatusInternalServerError)
 		// return
-		defEnv := gcperrors.New(gcperrors.Error{
-			Err: err,
-		})
-		fmt.Printf("Error Details:\n %v\n", defEnv)
+		fmt.Printf("Error Loading Data Status:\n %v\n", err)
 		return
 	}
-	fmt.Printf("  Done  %t\n", rstatus.Done())
+	//fmt.Printf("  Done  %t\n", rstatus.Done())
 
 	permissionsTable := ds.Table(permissionsTableName)
 	_, err = permissionsTable.Metadata(ctx)
@@ -312,9 +355,12 @@ func fronthandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	fmt.Printf("  Done  %t\n", pstatus.Done())
+	//fmt.Printf("  Done  %t\n", pstatus.Done())
 
 	fmt.Printf("done\n")
+
+	roles.Roles = []Role{}
+	permissions.Permissions = []Permission{}
 
 	fmt.Fprint(w, "ok")
 }
@@ -365,7 +411,11 @@ func generateMap(ctx context.Context, parent string) error {
 				}
 				cr := &Role{
 					Name:                sa.Name,
-					Role:                *sa,
+					Title:               sa.Title,
+					Description:         sa.Description,
+					Stage:               sa.Stage,
+					Deleted:             sa.Deleted,
+					Etag:                sa.Etag,
 					IncludedPermissions: rc.IncludedPermissions,
 					Region:              *region,
 				}
