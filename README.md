@@ -476,6 +476,33 @@ ORDER BY
 +-------------------------+-----------+
 ```
 
+#### Find which permissions are in one ROle but not another
+
+In this case, which permission is in `roles/iap.tunnelResourceAccessor` but not in `roles/editor`
+
+```sql
+bq query --nouse_legacy_sql  '
+SELECT
+  name AS permission_name
+FROM
+  iam-log.iam.permissions AS d1
+WHERE
+  "roles/iap.tunnelResourceAccessor" IN UNNEST(roles)
+  AND "roles/editor" NOT IN UNNEST(roles)
+  AND d1.region="us-central1"
+  AND d1._PARTITIONTIME = TIMESTAMP("2021-09-23") 
+GROUP BY
+  name
+'
+
+    +----------------------------------+
+    |         permission_name          |
+    +----------------------------------+
+    | iap.tunnelInstances.accessViaIAP |
+    +----------------------------------+
+
+```
+
 ---
 
 The following section details how to setup your own dataset:
