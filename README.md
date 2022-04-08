@@ -115,6 +115,10 @@ bq show --format=prettyjson --schema iam-log:iam.roles
 
 ![images/roles.png](images/roles.png)
 
+(…and no, i don’t know or care about the queries you run (eg, i don’t have any logging enabled).
+
+as a gcp user, you may also want to see [GCP Cloud Status Dashboard Public Dataset](https://blog.salrashid.dev/articles/2022/gcp_cloud_status_dataset/)
+
 ### But wait, i want to same thing for my custom roles in my org?
 
 thats not a problem, you're free to run your own (see the `diy` section below).
